@@ -11,6 +11,9 @@ import pickle
 import sys
 from datetime import datetime
 from typing import List
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier
