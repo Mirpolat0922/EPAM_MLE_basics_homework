@@ -5,20 +5,24 @@ This script prepares the data, runs the training, and saves the model.
 import argparse
 import os
 import sys
-import pickle
 import json
 import logging
 import pandas as pd
 import time
 from datetime import datetime
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score
 from dotenv import load_dotenv
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
 
 load_dotenv()
 
-# Comment this lines if you have problems with MLFlow installation
 import mlflow
 mlflow.autolog()
 
@@ -26,8 +30,7 @@ mlflow.autolog()
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(ROOT_DIR))
 
-# Change to CONF_FILE = "settings.json" if you have problems with env variables
-CONF_FILE = os.getenv('CONF_PATH') 
+CONF_FILE = os.getenv('CONF_PATH')
 
 from utils import get_project_dir, configure_logging
 
@@ -51,7 +54,7 @@ parser.add_argument("--model_path",
 
 class DataProcessor():
     def __init__(self) -> None:
-        pass
+        self.scaler = StandardScaler()
 
     def prepare_data(self, max_rows: int = None) -> pd.DataFrame:
         logging.info("Preparing data for training...")
@@ -74,35 +77,98 @@ class DataProcessor():
         return df
 
 
+class IrisNet(nn.Module):
+    def __init__(self, input_size=4, hidden_size1=8, hidden_size2=4, num_classes=3):
+        super(IrisNet, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_size, hidden_size1),
+            nn.ReLU(),
+            nn.Linear(hidden_size1, hidden_size2),
+            nn.ReLU(),
+            nn.Linear(hidden_size2, num_classes)
+        )
+    def forward(self, x):
+        return self.net(x)
+
 class Training():
     def __init__(self) -> None:
-        self.model = DecisionTreeClassifier(random_state=conf['general']['random_state'])
+        self.model = IrisNet()
+        self.scaler = StandardScaler()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model.to(self.device)
+        logging.info(f"Using device: {self.device}")
 
     def run_training(self, df: pd.DataFrame, out_path: str = None, test_size: float = 0.33) -> None:
         logging.info("Running training...")
         X_train, X_test, y_train, y_test = self.data_split(df, test_size=test_size)
+
+        # Convert to PyTorch tensors
+        X_train_tensor, y_train_tensor = self.prepare_tensors(X_train, y_train, fit_scaler=True)
+        X_test_tensor, y_test_tensor = self.prepare_tensors(X_test, y_test, fit_scaler=False)
+
         start_time = time.time()
-        self.train(X_train, y_train)
+        self.train(X_train_tensor, y_train_tensor)
         end_time = time.time()
-        logging.info(f"Training completed in {end_time - start_time} seconds.")
-        self.test(X_test, y_test)
+        logging.info(f"Training completed in {end_time - start_time:.2f} seconds.")
+
+        self.test(X_test_tensor, y_test_tensor)
         self.save(out_path)
 
     def data_split(self, df: pd.DataFrame, test_size: float = 0.33) -> tuple:
         logging.info("Splitting data into training and test sets...")
-        return train_test_split(df[['x1','x2']], df['y'], test_size=test_size, 
+        feature_columns = [col for col in df.columns if col != 'target']
+        X = df[feature_columns].values
+        y = df['target'].values
+        return train_test_split(X, y, test_size=test_size,
                                 random_state=conf['general']['random_state'])
-    
-    def train(self, X_train: pd.DataFrame, y_train: pd.DataFrame) -> None:
-        logging.info("Training the model...")
-        self.model.fit(X_train, y_train)
 
-    def test(self, X_test: pd.DataFrame, y_test: pd.DataFrame) -> float:
+    def prepare_tensors(self, X, y, fit_scaler=False):
+        """Convert numpy arrays to PyTorch tensors and normalize features"""
+        if fit_scaler:
+            X_scaled = self.scaler.fit_transform(X)
+        else:
+            X_scaled = self.scaler.transform(X)
+
+        X_tensor = torch.FloatTensor(X_scaled).to(self.device)
+        y_tensor = torch.LongTensor(y).to(self.device)
+        return X_tensor, y_tensor
+
+    def train(self, X_train: torch.Tensor, y_train: torch.Tensor) -> None:
+        logging.info("Training the model...")
+
+        # Training parameters
+        epochs = conf['train'].get('epochs', 100)
+        learning_rate = conf['train'].get('learning_rate', 0.01)
+
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+
+        self.model.train()
+        for epoch in range(epochs):
+            # Forward pass
+            outputs = self.model(X_train)
+            loss = criterion(outputs, y_train)
+
+            # Backward pass and optimization
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            # Log every 10 epochs
+            if (epoch + 1) % 10 == 0:
+                logging.info(f'Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.4f}')
+
+    def test(self, X_test: torch.Tensor, y_test: torch.Tensor) -> float:
         logging.info("Testing the model...")
-        y_pred = self.model.predict(X_test)
-        res = f1_score(y_test, y_pred)
-        logging.info(f"f1_score: {res}")
-        return res
+        self.model.eval()
+        with torch.no_grad():
+            outputs = self.model(X_test)
+            _, predicted = torch.max(outputs.data, 1)
+            y_pred = predicted.cpu().numpy()
+            y_true = y_test.cpu().numpy()
+            accuracy = accuracy_score(y_true, y_pred)
+            logging.info(f"Test Accuracy: {accuracy:.4f}")
+        return accuracy
 
     def save(self, path: str) -> None:
         logging.info("Saving the model...")
@@ -110,12 +176,19 @@ class Training():
             os.makedirs(MODEL_DIR)
 
         if not path:
-            path = os.path.join(MODEL_DIR, datetime.now().strftime(conf['general']['datetime_format']) + '.pickle')
+            path = os.path.join(MODEL_DIR, datetime.now().strftime(conf['general']['datetime_format']) + '.pth')
         else:
             path = os.path.join(MODEL_DIR, path)
 
-        with open(path, 'wb') as f:
-            pickle.dump(self.model, f)
+        # Save model state dict and scaler
+        torch.save({
+            'model_state_dict': self.model.state_dict(),
+            'scaler_mean': self.scaler.mean_,
+            'scaler_scale': self.scaler.scale_,
+            'input_size': 4,
+            'num_classes': 3
+        }, path)
+        logging.info(f"Model saved to {path}")
 
 
 def main():

@@ -3,8 +3,9 @@ __pycache__/
 *.py[cod]
 .vscode
 
-# MLflow database
+# MLflow database and environment
 mlflow.db
+mlflow-env/
 
 # Directories
 data/
@@ -16,6 +17,7 @@ mlruns/
 *.csv
 *.pickle
 *.pyc
+*.pth
 
 # Environment Variables
 .env

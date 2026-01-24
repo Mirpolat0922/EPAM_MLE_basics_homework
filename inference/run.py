@@ -7,7 +7,6 @@ import argparse
 import json
 import logging
 import os
-import pickle
 import sys
 from datetime import datetime
 from typing import List
@@ -16,8 +15,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import pandas as pd
-from sklearn.tree import DecisionTreeClassifier
-
+import torch
+import torch.nn as nn
+from sklearn.preprocessing import StandardScaler
 # Adds the root directory to system path
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(ROOT_DIR))
@@ -44,25 +44,54 @@ parser.add_argument("--infer_file",
 parser.add_argument("--out_path", 
                     help="Specify the path to the output table")
 
+class IrisNet(nn.Module):
+    def __init__(self, input_size=4, hidden_size1=8, hidden_size2=4, num_classes=3):
+        super(IrisNet, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_size, hidden_size1),
+            nn.ReLU(),
+            nn.Linear(hidden_size1, hidden_size2),
+            nn.ReLU(),
+            nn.Linear(hidden_size2, num_classes)
+        )
+    def forward(self, x):
+        return self.net(x)
 
 def get_latest_model_path() -> str:
     """Gets the path of the latest saved model"""
     latest = None
     for (dirpath, dirnames, filenames) in os.walk(MODEL_DIR):
         for filename in filenames:
-            if not latest or datetime.strptime(latest, conf['general']['datetime_format'] + '.pickle') < \
-                    datetime.strptime(filename, conf['general']['datetime_format'] + '.pickle'):
-                latest = filename
+            if filename.endswith('.pth'):
+                if not latest or datetime.strptime(latest.replace('.pth', ''), conf['general']['datetime_format']) < \
+                        datetime.strptime(filename.replace('.pth', ''), conf['general']['datetime_format']):
+                    latest = filename
     return os.path.join(MODEL_DIR, latest)
 
 
-def get_model_by_path(path: str) -> DecisionTreeClassifier:
-    """Loads and returns the specified model"""
+def get_model_by_path(path: str):
+    """Loads and returns the specified PyTorch model"""
     try:
-        with open(path, 'rb') as f:
-            model = pickle.load(f)
-            logging.info(f'Path of the model: {path}')
-            return model
+        # Load checkpoint
+        checkpoint = torch.load(path, map_location=torch.device('cpu'))
+
+        # Initialize model
+        model = IrisNet(
+            input_size=checkpoint.get('input_size', 4),
+            num_classes=checkpoint.get('num_classes', 3)
+        )
+
+        # Load model weights
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()  # Set to evaluation mode
+
+        # Load scaler parameters
+        scaler = StandardScaler()
+        scaler.mean_ = checkpoint['scaler_mean']
+        scaler.scale_ = checkpoint['scaler_scale']
+
+        logging.info(f'Model loaded from: {path}')
+        return model, scaler
     except Exception as e:
         logging.error(f'An error occurred while loading the model: {e}')
         sys.exit(1)
@@ -78,11 +107,33 @@ def get_inference_data(path: str) -> pd.DataFrame:
         sys.exit(1)
 
 
-def predict_results(model: DecisionTreeClassifier, infer_data: pd.DataFrame) -> pd.DataFrame:
-    """Predict de results and join it with the infer_data"""
-    results = model.predict(infer_data)
-    infer_data['results'] = results
-    return infer_data
+def predict_results(model: IrisNet, scaler: StandardScaler, infer_data: pd.DataFrame) -> pd.DataFrame:
+    """Predict the results and join it with the infer_data"""
+    try:
+        # Convert to numpy array
+        X = infer_data.values
+
+        # Normalize using scaler
+        X_scaled = scaler.transform(X)
+
+        # Convert to PyTorch tensor
+        X_tensor = torch.FloatTensor(X_scaled)
+
+        # Make predictions
+        with torch.no_grad():
+            outputs = model(X_tensor)
+            _, predicted = torch.max(outputs.data, 1)
+            results = predicted.numpy()
+
+        # Add predictions to dataframe
+        infer_data['results'] = results
+        logging.info("Predictions completed successfully")
+
+        return infer_data
+
+    except Exception as e:
+        logging.error(f"An error occurred during prediction: {e}")
+        sys.exit(1)
 
 
 def store_results(results: pd.DataFrame, path: str = None) -> None:
@@ -101,10 +152,10 @@ def main():
     configure_logging()
     args = parser.parse_args()
 
-    model = get_model_by_path(get_latest_model_path())
+    model, scaler = get_model_by_path(get_latest_model_path())
     infer_file = args.infer_file
     infer_data = get_inference_data(os.path.join(DATA_DIR, infer_file))
-    results = predict_results(model, infer_data)
+    results = predict_results(model,scaler, infer_data)
     store_results(results, args.out_path)
 
     logging.info(f'Prediction results: {results}')
