@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 .vscode
 
+# MLflow database
+mlflow.db
+
 # Directories
 data/
 models/
