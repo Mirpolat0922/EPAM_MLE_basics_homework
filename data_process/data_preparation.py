@@ -64,7 +64,6 @@ class IrisDatasetProcessor():
 
     # Method to load iris data
     def _load_iris_dataset(self):
-        logger.info("Loading Iris dataset...")
         iris = load_iris()
         df = pd.DataFrame(iris.data, columns=iris.feature_names)
         df["target"] = iris.target
@@ -72,7 +71,6 @@ class IrisDatasetProcessor():
 
     # Method to split dataset to train and test.
     def _split_data(self, df: pd.DataFrame, test_size: float = 0.2):
-        logger.info("Splitting dataset...")
         train_df, test_df = train_test_split(df, test_size=test_size, random_state=conf['general']['random_state'])
         return train_df, test_df
 

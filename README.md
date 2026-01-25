@@ -54,7 +54,7 @@ MLE_basic_example
 Before running this project, ensure you have the following installed:
 
 - **Docker Desktop** - For containerized training and inference
-- **Python 3.10+** - For local execution
+- **Python 3.10** - For local execution
 
 ## Installation
 
@@ -104,16 +104,30 @@ This will automatically:
 - Save the model inside the container
 
 2. **Extract the trained model from the container:**
+
+
+ Run container interactively
 ```bash
-# Run container interactively
 docker run -it iris_training /bin/bash
+```
 
-# Inside container, check the models
+ Inside container, check the models
+```bash
 ls /app/models/
+```
 
-# Exit and copy from another terminal
+ Exit and copy from another terminal(make sure that you have /models folder)
+```bash
 docker cp <container_id>:/app/models/<model_name>.pth ./models/
 ```
+
+Or you can also deattach like this in case that does not work: 
+
+```bash
+docker run -dit iris_training
+```
+
+And then copy the model to local machine.
 
 Replace `<container_id>` with your running Docker container ID and `<model_name>.pth` with your model's name.
 
@@ -129,10 +143,12 @@ python training/train.py
 1. **Build the inference Docker image:**
 ```bash
 docker build -f ./inference/Dockerfile \
-  --build-arg model_name=latest_model.pth \
+  --build-arg model_name=model_name \
   --build-arg settings_name=settings.json \
   -t iris_inference .
 ```
+
+Replace the model_name with the actual model name.
 
 2. **Run the inference container:**
 ```bash
@@ -149,6 +165,7 @@ docker run -it iris_inference /bin/bash
 # Inside container:
 python3 inference/run.py
 ```
+And the results(predictions) are saved inside results folder of the container
 
 #### Option B: Inference Locally
 ```bash
@@ -157,16 +174,13 @@ python inference/run.py
 
 ### Step 4: View Results
 
-Check the `results/` folder for prediction outputs with timestamp:
-```bash
-cat results/25.01.2026_15.45.csv
-```
+Check the `results/` folder for prediction outputs with timestamp in the container:
 
 ## Running Tests
 
 Run unit tests to verify functionality:
 ```bash
-python -m unittest unittests.py
+python -m unittest unittests/unittests.py
 ```
 
 **Tests included:**
@@ -176,33 +190,10 @@ python -m unittest unittests.py
 - Forward pass with correct tensor shapes
 - Training capability with sample data
 
-## MLFlow Tracking
-
-The project includes MLFlow for experiment tracking:
-
-1. **Start MLFlow UI:**
-```bash
-mlflow ui
-```
-
-2. **Access the UI:**
-Open your browser and navigate to `http://localhost:5000`
-
-3. **View Experiments:**
-- Training metrics (loss, accuracy)
-- Model parameters
-- Run comparisons
-
-**Note:** If you have problems with MLFlow installation, comment out these lines in `train.py` and `requirements.txt`:
-```python
-# import mlflow
-# mlflow.autolog()
-```
-
 ## Model Performance
 
 Typical results on Iris dataset:
-- **Training Accuracy**: 100%
-- **Test Accuracy**: ~100%
-- **Training Time**: 2-3 seconds
+- **Training Accuracy**: 99%
+- **Test Accuracy**: ~96%
+- **Training Time**: 0.2 seconds
 - **Inference Time**: <1 second for 30 samples
