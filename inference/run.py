@@ -158,8 +158,6 @@ def main():
     results = predict_results(model,scaler, infer_data)
     store_results(results, args.out_path)
 
-    logging.info(f'Prediction results: {results}')
-
 
 if __name__ == "__main__":
     main()

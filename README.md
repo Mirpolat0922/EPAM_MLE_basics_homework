@@ -16,7 +16,7 @@ A simple feedforward neural network implemented in PyTorch:
 - **Hidden Layer 2**: 4 neurons with ReLU activation
 - **Output Layer**: 3 neurons (one for each class)
 - **Loss Function**: CrossEntropyLoss
-- **Optimizer**: Adam (learning rate: 0.01)
+- **Optimizer**: Adam
 - **Training**: 100 epochs
 
 ## Project Structure
@@ -154,8 +154,8 @@ Replace the model_name with the actual model name.
 ```bash
 docker run \
   -v $(pwd)/models:/app/models \
-  -v $(pwd)/data:/app/input \
-  -v $(pwd)/results:/app/output \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/results:/app/results \
   iris_inference
 ```
 
@@ -165,7 +165,7 @@ docker run -it iris_inference /bin/bash
 # Inside container:
 python3 inference/run.py
 ```
-And the results(predictions) are saved inside results folder of the container
+And the results(predictions) are saved inside results folder
 
 #### Option B: Inference Locally
 ```bash
@@ -174,7 +174,7 @@ python inference/run.py
 
 ### Step 4: View Results
 
-Check the `results/` folder for prediction outputs with timestamp in the container:
+Check the `results/` folder for prediction outputs with timestamp:
 
 ## Running Tests
 
@@ -193,7 +193,15 @@ python -m unittest unittests/unittests.py
 ## Model Performance
 
 Typical results on Iris dataset:
-- **Training Accuracy**: 99%
-- **Test Accuracy**: ~96%
-- **Training Time**: 0.2 seconds
+- **Training Accuracy**: ~99%
+- **Test Accuracy**: ~94%
+- **Training Time**: 0.15 seconds
 - **Inference Time**: <1 second for 30 samples
+
+# Some notes(experience share): 
+
+I had so much trouble with handling paths sometimes I mixed them up and sometimes there was a space in the path to the project so all the paths did not work so I wasted so much time on it.
+
+Other than that everything was quite manageable and understandable. Especially working with Docker was really interesting and after theories this practical experience was very helpful to understand containerization fully.
+
+Since I worked on this project myself, managing GitHub was quite easy too(I did not have to go through the headache of handling conflicts :) 
