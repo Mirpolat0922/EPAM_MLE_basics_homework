@@ -205,3 +205,5 @@ I had so much trouble with handling paths sometimes I mixed them up and sometime
 Other than that everything was quite manageable and understandable. Especially working with Docker was really interesting and after theories this practical experience was very helpful to understand containerization fully.
 
 Since I worked on this project myself, managing GitHub was quite easy too(I did not have to go through the headache of handling conflicts :) 
+
+Oh also, I added data to the gitignore too because I read that this is the right way generally. But for some reason in homework instructions it says that data should be in repo(if I understood right). Anyway data is created by running the data_preparation.py.
